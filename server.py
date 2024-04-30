@@ -1,20 +1,59 @@
 import time
+import datetime
+import json
+import os
+import base64
+
+import matplotlib.pyplot as plt
 from PIL import Image
 from io import BytesIO
+import pickle
 from selenium import webdriver
+from selenium.webdriver import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
+
+
 
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 
-driver = webdriver.Firefox()
+option = webdriver.FirefoxOptions()
+option.set_preference('dom.webdriver.enable', False)
+option.set_preference('webnotifications.enable', False)
+option.set_preference('general.useragent.override', 'firefox142134')
+
+driver = webdriver.Firefox(options=option)
 
 driver.get('https://nb-bet.com/odds-scanner')
 # Авторизация по логину и паролю
 xpath = '//html/body/div/div[3]/div/div[1]/div/div[3]/a[1]'
 button = driver.find_element(By.LINK_TEXT, 'Вход').click()
+
+def download_outcome_details():
+    with open('outcome-details.json', 'r') as file:
+        json_data = json.load(file)
+
+    parsed_data = json.loads(json_data)
+    odds_history = parsed_data['data']['2']['oddsHistory']
+    timestamps = [str(entry[0])[:-3] for entry in odds_history]  # Обрезаем последние три символа
+    datetime_obj = [datetime.fromtimestamp(int(timestamp)) for timestamp in timestamps]
+    formatted_datetimes = [dt.strftime('%Y-%m-%d %H:%M:%S') for dt in datetime_obj]
+    odds = [entry[1] for entry in odds_history]
+
+# Построим график
+    plt.figure(figsize=(10, 6))
+    plt.plot(formatted_datetimes, odds, label='Событие', marker='o', linestyle='-')
+    plt.xticks(formatted_datetimes[::4])
+# Добавим подписи к осям и легенду
+    plt.xlabel('Дата')
+    plt.ylabel('Коэффициент')
+    plt.legend()
+
+# Отобразим график
+    return plt.show()
+
 try:
      input_field_username = WebDriverWait(driver, 10).until(
          EC.visibility_of_element_located((By.CSS_SELECTOR, "input[autocomplete='username']"))
@@ -69,27 +108,33 @@ try:
      input_element = driver.find_element(By.CSS_SELECTOR, '.sc-be4cb0a4-0.jPDJCm')
      input_element.clear()
      input_element.send_keys('5') """
-     button = driver.find_element(By.XPATH, "/html/body/div/div[4]/div/div[1]/div/div[3]/div[1]/div/button").click()
-     time.sleep(1)
+
      
-    # Ждем, пока элемент с изображением загрузится
-     canvas_element = driver.find_element(By.CSS_SELECTOR, "canvas.chartjs-render-monitor")
-     canvas_location = canvas_element.location
+     matches = driver.find_elements(By.CLASS_NAME, 'sc-6bb785d7-6.fSHdDF')
+    
+     all_matches = []
+     
+     for match in matches:
+         teams = match.find_element(By.CSS_SELECTOR, ".sc-6bb785d7-3.bYIXeR").text.split('\n')
+         date = match.find_element(By.XPATH, "/html/body/div/div[3]/div/div[1]/div/div[3]/div[1]/a/div/div[1]/div[1]/div[1]").text
+         ishod_match = match.find_element(By.XPATH, "/html/body/div/div[3]/div/div[1]/div/div[3]/div[33]/a/div/div[2]/div[1]").text
+         percent_change = match.find_element(By.CSS_SELECTOR, ".fGylKZ span").text
+         data = {
+        "teams": teams,
+        "date": f'{date} {datetime.datetime.today().date()}',
+        "ishod_match": ishod_match,
+        "percent_change": percent_change,
 
-    # Получаем снимок экрана
-     screenshot = driver.get_screenshot_as_png()
-     screenshot_img = Image.open(BytesIO(screenshot))
-
-    # Вырезаем область с изображением
-     image = screenshot_img.crop((
-         canvas_location['x'],
-         canvas_location['y'],
-         canvas_location['x'] + canvas_element.size['width'],
-         canvas_location['y'] + canvas_element.size['height']
-     ))
- 
-    # Сохраняем изображение
-     image.save("image.png")
-
+    }
+         all_matches.append(data)
+         podrobnee_btn = match.find_element(By.TAG_NAME, 'button').click()
+         time.sleep(2)
+         canvas_element = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH, '/html/body/div/div[3]/div/div[1]/div/div[3]/div[1]/div/div[1]/div/div[3]/canvas')))
+         canvas_base64 = driver.execute_script('return arguments[0].toDataURL("image/png").substring(21);', canvas_element)
+    
+         with open(f'canvas_image_{matches.index(match)}.png', 'wb') as f:
+            f.write(base64.b64decode(canvas_base64))
+         
+         
 finally:
     pass
